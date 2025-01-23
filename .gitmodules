@@ -1,3 +1,6 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "lib/morpho-blue-oracles"]
+	path = lib/morpho-blue-oracles
+	url = https://github.com/morpho-org/morpho-blue-oracles
