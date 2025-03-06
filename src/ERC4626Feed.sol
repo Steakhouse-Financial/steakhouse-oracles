@@ -28,7 +28,7 @@ contract ERC4626Feed is AggregatorV3Interface {
     /// @notice The number of decimals in the returned price
     uint8 public immutable decimals;
     
-    /// @notice Human-readable description of the price feed (e.g., "WETH-VAULT / WETH")
+    /// @notice Human-readable description of the price feed (e.g., "sUSDS / USDS")
     string public description;
 
     /// @notice One unit of vault shares (e.g., 1e18 for 18 decimals)
