@@ -18,23 +18,33 @@ contract ERC4626Feed is AggregatorV3Interface {
 
     uint256 public immutable ONE_SHARE;
     uint256 public immutable ONE_ASSET;
+    uint256 public immutable SCALING_NUMERATOR;
+    uint256 public immutable SCALING_DENOMINATOR;
 
     constructor(IERC4626 _vault, uint8 _decimals) {
         vault = _vault;
         token = IERC20Metadata(_vault.asset());
+        ONE_SHARE = 10 ** vault.decimals();
+        ONE_ASSET = 10 ** token.decimals();
         if (_decimals == 0) {
             decimals = token.decimals();
         } else {
             decimals = _decimals;
         }
+        uint256 token_decimals = token.decimals();
+        if (decimals > token_decimals) {
+            SCALING_NUMERATOR = 10 ** (decimals - token_decimals);
+            SCALING_DENOMINATOR = 1;
+        } else {
+            SCALING_NUMERATOR = 1;
+            SCALING_DENOMINATOR = 10 ** (token_decimals - decimals);
+        }
         description = string.concat(vault.symbol(), " / ", token.symbol());
-        ONE_SHARE = 10 ** vault.decimals();
-        ONE_ASSET = 10 ** token.decimals();
     }
 
     function getPrice() public view returns (uint256) {
         uint256 price = vault.convertToAssets(ONE_SHARE);
-        return price.mulDiv(10**decimals, ONE_ASSET);
+        return SCALING_NUMERATOR.mulDiv(price, SCALING_DENOMINATOR);
     }
 
     function _latestRoundData() internal view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {
