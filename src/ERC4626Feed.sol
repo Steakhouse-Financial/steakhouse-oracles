@@ -6,6 +6,7 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {AggregatorV3Interface} from "@morpho-blue-oracles/morpho-chainlink/interfaces/AggregatorV3Interface.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title ERC4626Feed
@@ -15,6 +16,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  */
 contract ERC4626Feed is AggregatorV3Interface {
     using Math for uint256;
+    using SafeCast for uint256;
 
     /// @notice Version of the price feed implementation
     uint256 public constant version = 1;
@@ -97,7 +99,7 @@ contract ERC4626Feed is AggregatorV3Interface {
     function _latestRoundData() internal view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {
         uint256 price = getPrice();
         uint256 timestamp = block.timestamp;
-        return (1, int256(price), timestamp, timestamp, 1);
+        return (1, price.toInt256(), timestamp, timestamp, 1);
     }
 
     /**
