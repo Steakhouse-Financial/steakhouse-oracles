@@ -15,92 +15,191 @@ interface IOracle {
     function price() external view returns (uint256);
 }
 
-contract MetaOracleDeviationTimelock is IOracle { 
-    IOracle public oracle; // Currently selected oracle
-    IOracle public primaryOracle;
-    IOracle public backupOracle;
-    uint256 public timelock;
-    uint256 public challengeTimelock = 0;
-    uint256 public healingTimelock = 0;
-    uint256 public threshold;
+/// @title MetaOracleDeviationTimelock
+/// @author Steakhouse Financial
+/// @notice A meta-oracle that selects between a primary and backup oracle based on price deviation and timelocks.
+/// @dev Switches to backup if primary deviates significantly, switches back when prices reconverge.
+contract MetaOracleDeviationTimelock is IOracle {
+    IOracle public immutable primaryOracle;
+    IOracle public immutable backupOracle;
+    uint256 public immutable deviationThreshold; // Scaled by 1e18 (e.g., 0.01e18 for 1%)
+    uint256 public immutable challengeTimelockDuration; // Duration in seconds
+    uint256 public immutable healingTimelockDuration; // Duration in seconds
 
+    IOracle public currentOracle; // Currently selected oracle
+    uint256 public challengeExpiresAt; // Timestamp when challenge period ends (0 if not challenged)
+    uint256 public healingExpiresAt; // Timestamp when healing period ends (0 if not healing)
+
+    /// @param _primaryOracle The primary price feed.
+    /// @param _backupOracle The backup price feed.
+    /// @param _deviationThreshold The maximum allowed relative deviation (scaled by 1e18) before a challenge can be initiated.
+    /// @param _challengeTimelockDuration The duration (seconds) a challenge must persist before switching to backup.
+    /// @param _healingTimelockDuration The duration (seconds) prices must remain converged before switching back to primary.
+    constructor(
+        IOracle _primaryOracle,
+        IOracle _backupOracle,
+        uint256 _deviationThreshold,
+        uint256 _challengeTimelockDuration,
+        uint256 _healingTimelockDuration
+    ) {
+        require(address(_primaryOracle) != address(0), "Invalid primary oracle");
+        require(address(_backupOracle) != address(0), "Invalid backup oracle");
+        require(address(_primaryOracle) != address(_backupOracle), "Oracles must be different");
+        require(_deviationThreshold > 0, "Deviation threshold must be positive");
+
+        primaryOracle = _primaryOracle;
+        backupOracle = _backupOracle;
+        deviationThreshold = _deviationThreshold;
+        challengeTimelockDuration = _challengeTimelockDuration;
+        healingTimelockDuration = _healingTimelockDuration;
+
+        // Check initial deviation
+        uint256 initialPrimaryPrice = _primaryOracle.price();
+        uint256 initialBackupPrice = _backupOracle.price();
+        uint256 initialDeviation;
+        if (initialBackupPrice == 0) {
+            initialDeviation = initialPrimaryPrice == 0 ? 0 : type(uint256).max;
+        } else {
+            uint256 diff;
+            if (initialPrimaryPrice >= initialBackupPrice) {
+                diff = initialPrimaryPrice - initialBackupPrice;
+            } else {
+                diff = initialBackupPrice - initialPrimaryPrice;
+            }
+            initialDeviation = (diff * 10**18) / initialBackupPrice;
+        }
+        require(initialDeviation <= _deviationThreshold, "MODT: Initial deviation too high");
+
+        currentOracle = _primaryOracle; // Start with the primary oracle
+    }
+
+    event ChallengeStarted(uint256 expiresAt);
+    event ChallengeRevoked();
+    event ChallengeAccepted(address indexed newOracle);
+    event HealingStarted(uint256 expiresAt);
+    event HealingRevoked();
+    event HealingAccepted(address indexed newOracle);
+
+    /// @inheritdoc IOracle
     function price() public view returns (uint256) {
-        return oracle.price();
+        return currentOracle.price();
     }
 
+    /// @notice Checks if the primary oracle is currently selected.
     function isPrimary() public view returns (bool) {
-        return oracle == primaryOracle;
+        return currentOracle == primaryOracle;
     }
 
+    /// @notice Checks if the backup oracle is currently selected.
     function isBackup() public view returns (bool) {
-        return oracle == backupOracle;
+        return currentOracle == backupOracle;
     }
 
+    /// @notice Checks if a challenge is currently active.
     function isChallenged() public view returns (bool) {
-        return challengeTimelock > 0;
+        return challengeExpiresAt > 0;
     }
 
+    /// @notice Checks if a healing period is currently active.
     function isHealing() public view returns (bool) {
-        return healingTimelock > 0;
+        return healingExpiresAt > 0;
     }
 
-    function isDeviant() public view returns (bool) {
+    /// @notice Calculates the absolute relative deviation between primary and backup oracles.
+    /// @dev Deviation is calculated as `abs(primaryPrice - backupPrice) * 1e18 / backupPrice`.
+    /// Returns 0 if backupPrice is 0 and primaryPrice is 0.
+    /// Returns type(uint256).max if backupPrice is 0 and primaryPrice is non-zero.
+    function getDeviation() public view returns (uint256) {
         uint256 primaryPrice = primaryOracle.price();
         uint256 backupPrice = backupOracle.price();
 
-        // Yes should depends on which is greater
-        uint256 deviation = (primaryPrice - backupPrice) * 10**18 / backupPrice;
+        if (backupPrice == 0) {
+            return primaryPrice == 0 ? 0 : type(uint256).max;
+        }
 
-        return (deviation > threshold);
+        uint256 diff;
+        if (primaryPrice >= backupPrice) {
+            diff = primaryPrice - backupPrice;
+        } else {
+            diff = backupPrice - primaryPrice;
+        }
+
+        // Use uint256 for intermediate multiplication to avoid overflow before division
+        return (diff * 10**18) / backupPrice;
     }
 
-    function challenge() public {
-        require(isPrimary(), "Work only if primary is selected");
-        require(!isChallenged(), "Shouldn't be challenged already");
-        require(isDeviant(), "Require deviation");
-        
-        challengeTimelock = block.timestamp + timelock;
+    /// @notice Checks if the deviation exceeds the configured threshold.
+    function isDeviant() public view returns (bool) {
+        return getDeviation() > deviationThreshold;
     }
 
-    function revokeChallenge() public {
-        require(isPrimary(), "Work only if primary is selected");
-        require(isChallenged(), "Should be in a challenge");
-        require(!isDeviant(), "Require no deviation");
+    /// @notice Initiates a challenge if the primary oracle is active and deviation threshold is exceeded.
+    /// @dev Starts a timelock period (`challengeTimelockDuration`).
+    function challenge() external {
+        require(isPrimary(), "MODT: Must be primary oracle");
+        require(!isChallenged(), "MODT: Already challenged");
+        require(!isHealing(), "MODT: Cannot challenge while healing"); // Prevent challenging during healing phase
+        require(isDeviant(), "MODT: Deviation threshold not met");
 
-        challengeTimelock = 0;
+        challengeExpiresAt = block.timestamp + challengeTimelockDuration;
+        emit ChallengeStarted(challengeExpiresAt);
     }
 
-    function acceptChallenge() public {
-        require(isPrimary(), "Work only if primary is selected");
-        require(isChallenged(), "Should be in a challenge");
-        require(challengeTimelock > block.timestamp, "Shouldn't be after the challenge timelock");
+    /// @notice Revokes an active challenge if the deviation is no longer present.
+    function revokeChallenge() external {
+        require(isPrimary(), "MODT: Must be primary oracle"); // Should still be primary
+        require(isChallenged(), "MODT: Not challenged");
+        require(!isDeviant(), "MODT: Deviation threshold still met");
 
-        oracle = backupOracle;
-        challengeTimelock = 0;
+        challengeExpiresAt = 0;
+        emit ChallengeRevoked();
     }
 
-    function heal() public {
-        require(isBackup(), "Work only if backup is selected");
-        require(!isHealing(), "Shouldn't be healing already");
-        require(!isDeviant(), "Require no deviation");
-        
-        healingTimelock = block.timestamp + timelock;
+    /// @notice Accepts the challenge after the timelock expires, switching to the backup oracle.
+    /// @dev Requires the deviation to still be present.
+    function acceptChallenge() external {
+        require(isPrimary(), "MODT: Must be primary oracle");
+        require(isChallenged(), "MODT: Not challenged");
+        require(block.timestamp >= challengeExpiresAt, "MODT: Challenge timelock not passed");
+        require(isDeviant(), "MODT: Deviation resolved"); // Deviation must persist
+
+        currentOracle = backupOracle;
+        challengeExpiresAt = 0;
+        emit ChallengeAccepted(address(currentOracle));
     }
 
-    function revokeHealing() public {
-        require(isBackup(), "Work only if backup is selected");
-        require(isHealing(), "Should be healing");
-        require(isDeviant(), "Require deviation");
+    /// @notice Initiates the healing process if the backup oracle is active and prices have reconverged.
+    /// @dev Starts a timelock period (`healingTimelockDuration`).
+    function heal() external {
+        require(isBackup(), "MODT: Must be backup oracle");
+        require(!isHealing(), "MODT: Already healing");
+        require(!isChallenged(), "MODT: Cannot heal while challenged"); // Prevent healing during challenge phase
+        require(!isDeviant(), "MODT: Deviation threshold still met");
 
-        healingTimelock = 0;
+        healingExpiresAt = block.timestamp + healingTimelockDuration;
+        emit HealingStarted(healingExpiresAt);
     }
 
-    function acceptHealing() public {
-        require(isBackup(), "Work only if backup is selected");
-        require(isHealing(), "Should be healing");
-        require(healingTimelock > block.timestamp, "Shouldn't be challenged already");
+    /// @notice Revokes an active healing process if the deviation threshold is exceeded again.
+    function revokeHealing() external {
+        require(isBackup(), "MODT: Must be backup oracle"); // Should still be backup
+        require(isHealing(), "MODT: Not healing");
+        require(isDeviant(), "MODT: Deviation threshold not met");
 
-        oracle = primaryOracle;
-        healingTimelock = 0;
+        healingExpiresAt = 0;
+        emit HealingRevoked();
+    }
+
+    /// @notice Accepts the healing after the timelock expires, switching back to the primary oracle.
+    /// @dev Requires the prices to still be converged (not deviant).
+    function acceptHealing() external {
+        require(isBackup(), "MODT: Must be backup oracle");
+        require(isHealing(), "MODT: Not healing");
+        require(block.timestamp >= healingExpiresAt, "MODT: Healing timelock not passed");
+        require(!isDeviant(), "MODT: Deviation occurred"); // Prices must remain converged
+
+        currentOracle = primaryOracle;
+        healingExpiresAt = 0;
+        emit HealingAccepted(address(currentOracle));
     }
 }
