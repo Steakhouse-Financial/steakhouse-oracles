@@ -2,6 +2,8 @@
 
 pragma solidity ^0.8.20;
 
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+
 /// @title IOracle
 /// @author Morpho Labs
 /// @custom:contact security@morpho.org
@@ -19,13 +21,16 @@ interface IOracle {
 /// @author Steakhouse Financial
 /// @notice A meta-oracle that selects between a primary and backup oracle based on price deviation and timelocks.
 /// @dev Switches to backup if primary deviates significantly, switches back when prices reconverge.
-contract MetaOracleDeviationTimelock is IOracle {
-    IOracle public immutable primaryOracle;
-    IOracle public immutable backupOracle;
-    uint256 public immutable deviationThreshold; // Scaled by 1e18 (e.g., 0.01e18 for 1%)
-    uint256 public immutable challengeTimelockDuration; // Duration in seconds
-    uint256 public immutable healingTimelockDuration; // Duration in seconds
+/// MUST be initialized by calling the `initialize` function.
+contract MetaOracleDeviationTimelock is IOracle, Initializable {
+    // --- Configuration (set during initialization) ---
+    IOracle public primaryOracle;
+    IOracle public backupOracle;
+    uint256 public deviationThreshold; // Scaled by 1e18 (e.g., 0.01e18 for 1%)
+    uint256 public challengeTimelockDuration; // Duration in seconds
+    uint256 public healingTimelockDuration; // Duration in seconds
 
+    // --- State ---
     IOracle public currentOracle; // Currently selected oracle
     uint256 public challengeExpiresAt; // Timestamp when challenge period ends (0 if not challenged)
     uint256 public healingExpiresAt; // Timestamp when healing period ends (0 if not healing)
@@ -35,13 +40,13 @@ contract MetaOracleDeviationTimelock is IOracle {
     /// @param _deviationThreshold The maximum allowed relative deviation (scaled by 1e18) before a challenge can be initiated.
     /// @param _challengeTimelockDuration The duration (seconds) a challenge must persist before switching to backup.
     /// @param _healingTimelockDuration The duration (seconds) prices must remain converged before switching back to primary.
-    constructor(
+    function initialize(
         IOracle _primaryOracle,
         IOracle _backupOracle,
         uint256 _deviationThreshold,
         uint256 _challengeTimelockDuration,
         uint256 _healingTimelockDuration
-    ) {
+    ) external initializer {
         require(address(_primaryOracle) != address(0), "Invalid primary oracle");
         require(address(_backupOracle) != address(0), "Invalid backup oracle");
         require(address(_primaryOracle) != address(_backupOracle), "Oracles must be different");

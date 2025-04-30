@@ -4,6 +4,8 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {MetaOracleDeviationTimelock, IOracle} from "../src/MetaOracleDeviationTimelock.sol";
+import {MetaOracleDeviationTimelockFactory} from "../src/MetaOracleDeviationTimelockFactory.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 // --- Mock Oracle Implementation ---
 
@@ -40,7 +42,11 @@ contract MetaOracleDeviationTimelockTest is Test {
     MockOracle internal primaryOracle;
     MockOracle internal backupOracle;
 
-    // Contract under test
+    // Factory and implementation
+    MetaOracleDeviationTimelockFactory internal factory;
+    MetaOracleDeviationTimelock internal implementation;
+
+    // Contract under test (will be a proxy instance)
     MetaOracleDeviationTimelock internal metaOracle;
 
     // Deployment parameters
@@ -57,12 +63,16 @@ contract MetaOracleDeviationTimelockTest is Test {
 
     /// @notice Setup test environment before each test function
     function setUp() public {
+        // Deploy Factory (which deploys implementation)
+        factory = new MetaOracleDeviationTimelockFactory();
+        implementation = MetaOracleDeviationTimelock(factory.implementation());
+
         // Deploy mock oracles
         primaryOracle = new MockOracle("Primary ETH/USD", 18, 2000 * PRICE_PRECISION); // Initial price $2000
         backupOracle = new MockOracle("Backup ETH/USD", 18, 2000 * PRICE_PRECISION); // Initial price $2000
 
-        // Deploy the meta-oracle
-        metaOracle = new MetaOracleDeviationTimelock(
+        // Deploy the meta-oracle proxy via factory
+        metaOracle = factory.deployMetaOracle(
             IOracle(address(primaryOracle)),
             IOracle(address(backupOracle)),
             THRESHOLD_5_PERCENT,
@@ -70,7 +80,7 @@ contract MetaOracleDeviationTimelockTest is Test {
             healingDuration
         );
 
-        // Ensure initial state
+        // Ensure initial state of the proxy
         assertEq(address(metaOracle.currentOracle()), address(primaryOracle), "Initial oracle should be primary");
         assertEq(metaOracle.price(), 2000 * PRICE_PRECISION, "Initial price mismatch");
         assertFalse(metaOracle.isChallenged(), "Should not be challenged initially");
@@ -78,33 +88,49 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertFalse(metaOracle.isDeviant(), "Should not be deviant initially");
     }
 
-    // --- Constructor Tests ---
+    // --- Constructor / Initialization Tests ---
 
     function test_RevertIf_ZeroAddressPrimary() public {
         vm.expectRevert("Invalid primary oracle");
-        new MetaOracleDeviationTimelock(
-            IOracle(address(0)), IOracle(address(backupOracle)), THRESHOLD_5_PERCENT, challengeDuration, healingDuration
+        factory.deployMetaOracle(
+            IOracle(address(0)),
+            IOracle(address(backupOracle)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
         );
     }
 
     function test_RevertIf_ZeroAddressBackup() public {
-        vm.expectRevert("Invalid backup oracle");
-        new MetaOracleDeviationTimelock(
-            IOracle(address(primaryOracle)), IOracle(address(0)), THRESHOLD_5_PERCENT, challengeDuration, healingDuration
+        vm.expectRevert("Invalid backup oracle"); // Keep simple revert string for now
+        factory.deployMetaOracle(
+            IOracle(address(primaryOracle)),
+            IOracle(address(0)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
         );
     }
 
     function test_RevertIf_SameOracleAddresses() public {
         vm.expectRevert("Oracles must be different");
-        new MetaOracleDeviationTimelock(
-            IOracle(address(primaryOracle)), IOracle(address(primaryOracle)), THRESHOLD_5_PERCENT, challengeDuration, healingDuration
+        factory.deployMetaOracle(
+            IOracle(address(primaryOracle)),
+            IOracle(address(primaryOracle)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
         );
     }
 
      function test_RevertIf_ZeroThreshold() public {
         vm.expectRevert("Deviation threshold must be positive");
-        new MetaOracleDeviationTimelock(
-            IOracle(address(primaryOracle)), IOracle(address(backupOracle)), 0, challengeDuration, healingDuration
+        factory.deployMetaOracle(
+            IOracle(address(primaryOracle)),
+            IOracle(address(backupOracle)),
+            0,
+            challengeDuration,
+            healingDuration
         );
     }
 
@@ -114,7 +140,19 @@ contract MetaOracleDeviationTimelockTest is Test {
         backupOracle.setPrice(2000 * PRICE_PRECISION); // Stays at default
 
         vm.expectRevert("MODT: Initial deviation too high");
-        new MetaOracleDeviationTimelock(
+        factory.deployMetaOracle(
+            IOracle(address(primaryOracle)),
+            IOracle(address(backupOracle)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
+        );
+    }
+
+    function test_RevertIf_Initialize_CalledTwice() public {
+        // metaOracle is already initialized in setUp()
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        metaOracle.initialize(
             IOracle(address(primaryOracle)),
             IOracle(address(backupOracle)),
             THRESHOLD_5_PERCENT,
