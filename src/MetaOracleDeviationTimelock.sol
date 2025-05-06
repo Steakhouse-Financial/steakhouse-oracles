@@ -62,15 +62,15 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
             }
             initialDeviation = (diff * 10**18) / initialBackupPrice;
         }
-        require(initialDeviation <= 2*_deviationThreshold, "MODT: Initial deviation too high");
+        require(initialDeviation <= _deviationThreshold, "MODT: Initial deviation too high");
 
         currentOracle = _primaryOracle; // Start with the primary oracle
     }
 
     /// @inheritdoc IOracle
     function price() public view returns (uint256) {
-        try currentOracle.price() returns (uint256 price) {
-            return price;
+        try currentOracle.price() returns (uint256 currentPrice) {
+            return currentPrice;
         } catch {
             if (isPrimary()) {
                 return backupOracle.price();
@@ -78,6 +78,16 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
                 return primaryOracle.price();
             }
         }
+    }
+
+    /// @inheritdoc IMetaOracleDeviationTimelock
+    function primaryPrice() public view returns (uint256) {
+        return primaryOracle.price();
+    }
+
+    /// @inheritdoc IMetaOracleDeviationTimelock
+    function backupPrice() public view returns (uint256) {
+        return backupOracle.price();
     }
 
     /// @notice Checks if the primary oracle is currently selected.
@@ -105,22 +115,22 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
     /// Returns 0 if backupPrice is 0 and primaryPrice is 0.
     /// Returns type(uint256).max if backupPrice is 0 and primaryPrice is non-zero.
     function getDeviation() public view returns (uint256) {
-        uint256 primaryPrice = primaryOracle.price();
-        uint256 backupPrice = backupOracle.price();
+        uint256 currentPrimaryPrice = primaryOracle.price();
+        uint256 currentBackupPrice = backupOracle.price();
 
-        if (backupPrice == 0) {
-            return primaryPrice == 0 ? 0 : type(uint256).max;
+        if (currentBackupPrice == 0) {
+            return currentPrimaryPrice == 0 ? 0 : type(uint256).max;
         }
 
         uint256 diff;
-        if (primaryPrice >= backupPrice) {
-            diff = primaryPrice - backupPrice;
+        if (currentPrimaryPrice >= currentBackupPrice) {
+            diff = currentPrimaryPrice - currentBackupPrice;
         } else {
-            diff = backupPrice - primaryPrice;
+            diff = currentBackupPrice - currentPrimaryPrice;
         }
 
         // Use uint256 for intermediate multiplication to avoid overflow before division
-        return (diff * 10**18) / backupPrice;
+        return (diff * 10**18) / currentBackupPrice;
     }
 
     /// @notice Checks if the deviation exceeds the configured threshold.
