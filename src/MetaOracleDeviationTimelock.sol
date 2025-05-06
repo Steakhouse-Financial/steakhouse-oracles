@@ -3,26 +3,15 @@
 pragma solidity ^0.8.20;
 
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-
-/// @title IOracle
-/// @author Morpho Labs
-/// @custom:contact security@morpho.org
-/// @notice Interface that oracles used by Morpho must implement.
-/// @dev It is the user's responsibility to select markets with safe oracles.
-interface IOracle {
-    /// @notice Returns the price of 1 asset of collateral token quoted in 1 asset of loan token, scaled by 1e36.
-    /// @dev It corresponds to the price of 10**(collateral token decimals) assets of collateral token quoted in
-    /// 10**(loan token decimals) assets of loan token with `36 + loan token decimals - collateral token decimals`
-    /// decimals of precision.
-    function price() external view returns (uint256);
-}
+import {IMetaOracleDeviationTimelock} from "./interfaces/IMetaOracleDeviationTimelock.sol";
+import {IOracle} from "./interfaces/IOracle.sol";
 
 /// @title MetaOracleDeviationTimelock
 /// @author Steakhouse Financial
 /// @notice A meta-oracle that selects between a primary and backup oracle based on price deviation and timelocks.
 /// @dev Switches to backup if primary deviates significantly, switches back when prices reconverge.
 /// MUST be initialized by calling the `initialize` function.
-contract MetaOracleDeviationTimelock is IOracle, Initializable {
+contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializable {
     // --- Configuration (set during initialization) ---
     IOracle public primaryOracle;
     IOracle public backupOracle;
@@ -73,21 +62,22 @@ contract MetaOracleDeviationTimelock is IOracle, Initializable {
             }
             initialDeviation = (diff * 10**18) / initialBackupPrice;
         }
-        require(initialDeviation <= _deviationThreshold, "MODT: Initial deviation too high");
+        require(initialDeviation <= 2*_deviationThreshold, "MODT: Initial deviation too high");
 
         currentOracle = _primaryOracle; // Start with the primary oracle
     }
 
-    event ChallengeStarted(uint256 expiresAt);
-    event ChallengeRevoked();
-    event ChallengeAccepted(address indexed newOracle);
-    event HealingStarted(uint256 expiresAt);
-    event HealingRevoked();
-    event HealingAccepted(address indexed newOracle);
-
     /// @inheritdoc IOracle
     function price() public view returns (uint256) {
-        return currentOracle.price();
+        try currentOracle.price() returns (uint256 price) {
+            return price;
+        } catch {
+            if (isPrimary()) {
+                return backupOracle.price();
+            } else {
+                return primaryOracle.price();
+            }
+        }
     }
 
     /// @notice Checks if the primary oracle is currently selected.
