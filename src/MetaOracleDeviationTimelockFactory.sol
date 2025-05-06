@@ -2,9 +2,10 @@
 
 pragma solidity ^0.8.20;
 
-import {MetaOracleDeviationTimelock, IOracle} from "./MetaOracleDeviationTimelock.sol";
+import {MetaOracleDeviationTimelock} from "./MetaOracleDeviationTimelock.sol";
+import {IMetaOracleDeviationTimelock} from "./interfaces/IMetaOracleDeviationTimelock.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IOracle} from "./interfaces/IOracle.sol";
 
 /// @title MetaOracleDeviationTimelockFactory
 /// @author Steakhouse Financial
@@ -32,19 +33,19 @@ contract MetaOracleDeviationTimelockFactory {
     /// @param _deviationThreshold The max relative deviation (1e18 scale).
     /// @param _challengeTimelockDuration Duration (seconds) before challenge can be accepted.
     /// @param _healingTimelockDuration Duration (seconds) before healing can be accepted.
-    /// @return proxyInstance The address of the newly deployed MetaOracleDeviationTimelock proxy contract.
+    /// @return proxyInstance The interface of the newly deployed MetaOracleDeviationTimelock proxy contract.
     function deployMetaOracle(
         IOracle _primaryOracle,
         IOracle _backupOracle,
         uint256 _deviationThreshold,
         uint256 _challengeTimelockDuration,
         uint256 _healingTimelockDuration
-    ) external returns (MetaOracleDeviationTimelock proxyInstance) {
+    ) external returns (IMetaOracleDeviationTimelock proxyInstance) {
         address proxy = Clones.clone(implementation);
-        proxyInstance = MetaOracleDeviationTimelock(proxy);
+        proxyInstance = IMetaOracleDeviationTimelock(proxy);
 
         // Initialize the proxy
-        proxyInstance.initialize(
+        MetaOracleDeviationTimelock(proxy).initialize(
             _primaryOracle,
             _backupOracle,
             _deviationThreshold,
