@@ -15,18 +15,27 @@ contract MockOracle is IOracle {
     string public description;
     uint8 public decimals;
     uint256 internal _price;
+    bool public shouldRevert;
 
     constructor(string memory _description, uint8 _decimals, uint256 initialPrice) {
         description = _description;
         decimals = _decimals;
         _price = initialPrice;
+        shouldRevert = false;
     }
 
     function setPrice(uint256 newPrice) external {
         _price = newPrice;
     }
 
+    function setShouldRevert(bool _shouldRevert) external {
+        shouldRevert = _shouldRevert;
+    }
+
     function price() external view returns (uint256) {
+        if (shouldRevert) {
+            revert("Oracle failed");
+        }
         return _price;
     }
 }
@@ -816,5 +825,242 @@ contract MetaOracleDeviationTimelockTest is Test {
         emit IMetaOracleDeviationTimelock.HealingAccepted(address(primaryOracle));
         metaOracle.acceptHealing();
         assertTrue(metaOracle.isPrimary());
+    }
+
+    // --- Additional Tests for Uncovered Functions ---
+
+    function test_HasChallengeExpired_NoChallenge() public {
+        assertFalse(metaOracle.hasChallengeExpired(), "Should not be expired when no challenge");
+    }
+
+    function test_HasChallengeExpired_ActiveNotExpired() public {
+        // Start challenge
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        assertFalse(metaOracle.hasChallengeExpired(), "Should not be expired during active challenge");
+    }
+
+    function test_HasChallengeExpired_ActiveAndExpired() public {
+        // Start challenge
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        uint256 expiry = metaOracle.challengeExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        assertTrue(metaOracle.hasChallengeExpired(), "Should be expired after challenge period");
+    }
+
+    function test_CanAcceptChallenge_AllConditionsMet() public {
+        // Start challenge
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        uint256 expiry = metaOracle.challengeExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        assertTrue(metaOracle.canAcceptChallenge(), "Should be able to accept challenge when all conditions met");
+    }
+
+    function test_CanAcceptChallenge_NotPrimary() public {
+        // Switch to backup first
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        assertFalse(metaOracle.canAcceptChallenge(), "Should not be able to accept challenge when not primary");
+    }
+
+    function test_CanAcceptChallenge_NotChallenged() public {
+        assertFalse(metaOracle.canAcceptChallenge(), "Should not be able to accept challenge when not challenged");
+    }
+
+    function test_CanAcceptChallenge_NotExpired() public {
+        // Start challenge
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        uint256 expiry = metaOracle.challengeExpiresAt();
+        
+        // Move time forward but not to expiry
+        vm.warp(expiry - 1);
+        assertFalse(metaOracle.canAcceptChallenge(), "Should not be able to accept challenge before expiry");
+    }
+
+    function test_CanAcceptChallenge_NotDeviant() public {
+        // Start challenge
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        uint256 expiry = metaOracle.challengeExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        
+        // Resolve deviation
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        assertFalse(metaOracle.canAcceptChallenge(), "Should not be able to accept challenge when not deviant");
+    }
+
+    function test_HasHealingExpired_NoHealing() public {
+        assertFalse(metaOracle.hasHealingExpired(), "Should not be expired when no healing");
+    }
+
+    function test_HasHealingExpired_ActiveNotExpired() public {
+        // Setup: Switch to backup and start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        metaOracle.heal();
+        
+        assertFalse(metaOracle.hasHealingExpired(), "Should not be expired during active healing");
+    }
+
+    function test_HasHealingExpired_ActiveAndExpired() public {
+        // Setup: Switch to backup and start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        metaOracle.heal();
+        uint256 expiry = metaOracle.healingExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        assertTrue(metaOracle.hasHealingExpired(), "Should be expired after healing period");
+    }
+
+    function test_CanAcceptHealing_AllConditionsMet() public {
+        // Setup: Switch to backup and start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        metaOracle.heal();
+        uint256 expiry = metaOracle.healingExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        assertTrue(metaOracle.canAcceptHealing(), "Should be able to accept healing when all conditions met");
+    }
+
+    function test_CanAcceptHealing_NotBackup() public {
+        assertFalse(metaOracle.canAcceptHealing(), "Should not be able to accept healing when not backup");
+    }
+
+    function test_CanAcceptHealing_NotHealing() public {
+        // Switch to backup but don't start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        assertFalse(metaOracle.canAcceptHealing(), "Should not be able to accept healing when not healing");
+    }
+
+    function test_CanAcceptHealing_NotExpired() public {
+        // Setup: Switch to backup and start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        metaOracle.heal();
+        uint256 expiry = metaOracle.healingExpiresAt();
+        
+        // Move time forward but not to expiry
+        vm.warp(expiry - 1);
+        assertFalse(metaOracle.canAcceptHealing(), "Should not be able to accept healing before expiry");
+    }
+
+    function test_CanAcceptHealing_Deviant() public {
+        // Setup: Switch to backup and start healing
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracle.challenge();
+        vm.warp(metaOracle.challengeExpiresAt());
+        metaOracle.acceptChallenge();
+        primaryOracle.setPrice(2000 * PRICE_PRECISION);
+        metaOracle.heal();
+        uint256 expiry = metaOracle.healingExpiresAt();
+        
+        // Move time forward to expiry
+        vm.warp(expiry);
+        
+        // Make prices deviant again
+        primaryOracle.setPrice(2150 * PRICE_PRECISION);
+        assertFalse(metaOracle.canAcceptHealing(), "Should not be able to accept healing when deviant");
+    }
+
+    function test_PrimaryPrice_ReturnsCorrectPrice() public {
+        uint256 expectedPrice = 2000 * PRICE_PRECISION;
+        assertEq(metaOracle.primaryPrice(), expectedPrice, "Primary price should match oracle price");
+        
+        // Change price and verify
+        primaryOracle.setPrice(2100 * PRICE_PRECISION);
+        assertEq(metaOracle.primaryPrice(), 2100 * PRICE_PRECISION, "Primary price should update with oracle");
+    }
+
+    function test_BackupPrice_ReturnsCorrectPrice() public {
+        uint256 expectedPrice = 2000 * PRICE_PRECISION;
+        assertEq(metaOracle.backupPrice(), expectedPrice, "Backup price should match oracle price");
+        
+        // Change price and verify
+        backupOracle.setPrice(1900 * PRICE_PRECISION);
+        assertEq(metaOracle.backupPrice(), 1900 * PRICE_PRECISION, "Backup price should update with oracle");
+    }
+
+    // --- Additional Tests for Uncovered Lines ---
+
+    function test_Price_CurrentOracleFails() public {
+        // Create a mock oracle that initially works but will fail later
+        MockOracle failingOracle = new MockOracle("Failing Oracle", 18, 2000 * PRICE_PRECISION);
+        
+        // Deploy a new meta oracle with the failing oracle as primary
+        IMetaOracleDeviationTimelock metaOracleWithFailing = factory.deployMetaOracle(
+            IOracle(address(failingOracle)),
+            IOracle(address(backupOracle)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
+        );
+
+        // Make the primary oracle fail
+        failingOracle.setShouldRevert(true);
+
+        // When primary fails, should return backup price
+        assertEq(metaOracleWithFailing.price(), 2000 * PRICE_PRECISION, "Should return backup price when primary fails");
+
+        // Switch to backup and make it fail
+        failingOracle.setShouldRevert(false);
+        failingOracle.setPrice(2150 * PRICE_PRECISION);
+        metaOracleWithFailing.challenge();
+        vm.warp(metaOracleWithFailing.challengeExpiresAt());
+        metaOracleWithFailing.acceptChallenge();
+
+        backupOracle.setShouldRevert(true);
+
+        // When backup fails, should return primary price
+        assertEq(metaOracleWithFailing.price(), 2150 * PRICE_PRECISION, "Should return primary price when backup fails");
+    }
+
+    function test_Initialize_BackupPriceHigher() public {
+        // Set initial prices with backup higher than primary
+        primaryOracle.setPrice(1900 * PRICE_PRECISION);
+        backupOracle.setPrice(2000 * PRICE_PRECISION);
+
+        // Deploy new meta oracle
+        IMetaOracleDeviationTimelock newMetaOracle = factory.deployMetaOracle(
+            IOracle(address(primaryOracle)),
+            IOracle(address(backupOracle)),
+            THRESHOLD_5_PERCENT,
+            challengeDuration,
+            healingDuration
+        );
+
+        // Verify initial state
+        assertEq(address(newMetaOracle.currentOracle()), address(primaryOracle), "Should start with primary");
+        assertEq(newMetaOracle.price(), 1900 * PRICE_PRECISION, "Should use primary price");
+        assertFalse(newMetaOracle.isDeviant(), "Should not be deviant initially");
     }
 } 
