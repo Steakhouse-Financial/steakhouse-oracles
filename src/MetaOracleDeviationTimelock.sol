@@ -161,7 +161,7 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
 
     /// @notice Checks if the challenge has expired.
     function hasChallengeExpired() public view returns (bool) {
-        return challengeExpiresAt > 0 && block.timestamp >= challengeExpiresAt;
+        return isChallenged() && block.timestamp >= challengeExpiresAt;
     }
 
     /// @notice Checks if the challenge can be accepted.
@@ -205,7 +205,7 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
 
     /// @notice Checks if the healing has expired.
     function hasHealingExpired() public view returns (bool) {
-        return healingExpiresAt > 0 && block.timestamp >= healingExpiresAt;
+        return isHealing() && block.timestamp >= healingExpiresAt;
     }
 
     /// @notice Checks if the healing can be accepted.
