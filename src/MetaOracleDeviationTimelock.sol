@@ -143,7 +143,6 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
     function challenge() external {
         require(isPrimary(), "MODT: Must be primary oracle");
         require(!isChallenged(), "MODT: Already challenged");
-        require(!isHealing(), "MODT: Cannot challenge while healing"); // Prevent challenging during healing phase
         require(isDeviant(), "MODT: Deviation threshold not met");
 
         challengeExpiresAt = block.timestamp + challengeTimelockDuration;
@@ -158,6 +157,16 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
 
         challengeExpiresAt = 0;
         emit ChallengeRevoked();
+    }
+
+    /// @notice Checks if the challenge has expired.
+    function hasChallengeExpired() public view returns (bool) {
+        return challengeExpiresAt > 0 && block.timestamp >= challengeExpiresAt;
+    }
+
+    /// @notice Checks if the challenge can be accepted.
+    function canAcceptChallenge() public view returns (bool) {
+        return isPrimary() && isChallenged() && block.timestamp >= challengeExpiresAt && isDeviant();
     }
 
     /// @notice Accepts the challenge after the timelock expires, switching to the backup oracle.
@@ -178,7 +187,6 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
     function heal() external {
         require(isBackup(), "MODT: Must be backup oracle");
         require(!isHealing(), "MODT: Already healing");
-        require(!isChallenged(), "MODT: Cannot heal while challenged"); // Prevent healing during challenge phase
         require(!isDeviant(), "MODT: Deviation threshold still met");
 
         healingExpiresAt = block.timestamp + healingTimelockDuration;
@@ -193,6 +201,16 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
 
         healingExpiresAt = 0;
         emit HealingRevoked();
+    }
+
+    /// @notice Checks if the healing has expired.
+    function hasHealingExpired() public view returns (bool) {
+        return healingExpiresAt > 0 && block.timestamp >= healingExpiresAt;
+    }
+
+    /// @notice Checks if the healing can be accepted.
+    function canAcceptHealing() public view returns (bool) {
+        return isBackup() && isHealing() && block.timestamp >= healingExpiresAt && !isDeviant();
     }
 
     /// @notice Accepts the healing after the timelock expires, switching back to the primary oracle.

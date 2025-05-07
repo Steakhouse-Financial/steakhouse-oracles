@@ -35,6 +35,10 @@ interface IMetaOracleDeviationTimelock is IOracle {
     function isHealing() external view returns (bool);
     function getDeviation() external view returns (uint256);
     function isDeviant() external view returns (bool);
+    function hasChallengeExpired() external view returns (bool);
+    function hasHealingExpired() external view returns (bool);
+    function canAcceptChallenge() external view returns (bool);
+    function canAcceptHealing() external view returns (bool);
 
     // --- State Changing Functions ---
     function challenge() external;
