@@ -3,7 +3,9 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {MetaOracleDeviationTimelock, IOracle} from "../src/MetaOracleDeviationTimelock.sol";
+import {MetaOracleDeviationTimelock} from "../src/MetaOracleDeviationTimelock.sol";
+import {IOracle} from "../src/interfaces/IOracle.sol";
+import {IMetaOracleDeviationTimelock} from "../src/interfaces/IMetaOracleDeviationTimelock.sol";
 import {MetaOracleDeviationTimelockFactory} from "../src/MetaOracleDeviationTimelockFactory.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
@@ -47,7 +49,7 @@ contract MetaOracleDeviationTimelockTest is Test {
     MetaOracleDeviationTimelock internal implementation;
 
     // Contract under test (will be a proxy instance)
-    MetaOracleDeviationTimelock internal metaOracle;
+    IMetaOracleDeviationTimelock internal metaOracle;
 
     // Deployment parameters
     uint256 internal challengeDuration = ONE_HOUR;
@@ -71,7 +73,7 @@ contract MetaOracleDeviationTimelockTest is Test {
         primaryOracle = new MockOracle("Primary ETH/USD", 18, 2000 * PRICE_PRECISION); // Initial price $2000
         backupOracle = new MockOracle("Backup ETH/USD", 18, 2000 * PRICE_PRECISION); // Initial price $2000
 
-        // Deploy the meta-oracle proxy via factory
+        // Deploy the meta-oracle proxy via factory (returns the interface type)
         metaOracle = factory.deployMetaOracle(
             IOracle(address(primaryOracle)),
             IOracle(address(backupOracle)),
@@ -152,7 +154,8 @@ contract MetaOracleDeviationTimelockTest is Test {
     function test_RevertIf_Initialize_CalledTwice() public {
         // metaOracle is already initialized in setUp()
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        metaOracle.initialize(
+        // Need to cast to the implementation type to call initialize again
+        MetaOracleDeviationTimelock(address(metaOracle)).initialize(
             IOracle(address(primaryOracle)),
             IOracle(address(backupOracle)),
             THRESHOLD_5_PERCENT,
@@ -223,8 +226,9 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertTrue(metaOracle.isDeviant(), "Pre-check: Should be deviant");
 
         // Expect event
-        vm.expectEmit(true, false, false, true);
-        emit MetaOracleDeviationTimelock.ChallengeStarted(block.timestamp + challengeDuration);
+        vm.expectEmit(false, false, false, true); // Check data (expiresAt)
+        emit IMetaOracleDeviationTimelock.ChallengeStarted(block.timestamp + challengeDuration); // Check against the event signature
+        // The event will be emitted by the metaOracle instance
 
         // Call challenge
         metaOracle.challenge();
@@ -294,8 +298,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertFalse(metaOracle.isDeviant(), "Sanity check: Deviation resolved");
 
         // Expect event
-        vm.expectEmit(true, false, false, true);
-        emit MetaOracleDeviationTimelock.ChallengeRevoked();
+        vm.expectEmit(false, false, false, true); // No indexed params, check event happened
+        emit IMetaOracleDeviationTimelock.ChallengeRevoked();
 
         // Revoke
         metaOracle.revokeChallenge();
@@ -350,8 +354,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertTrue(metaOracle.isDeviant(), "Sanity check: Should still be deviant");
 
         // Expect event
-        vm.expectEmit(true, true, false, true); // Check indexed address (topic1)
-        emit MetaOracleDeviationTimelock.ChallengeAccepted(address(backupOracle));
+        vm.expectEmit(true, false, false, true); // Check topic1 (indexed newOracle address)
+        emit IMetaOracleDeviationTimelock.ChallengeAccepted(address(backupOracle));
 
         // Accept challenge
         metaOracle.acceptChallenge();
@@ -449,8 +453,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertFalse(metaOracle.isDeviant(), "Sanity Check: Should not be deviant for heal");
 
         // Expect event
-        vm.expectEmit(true, false, false, true);
-        emit MetaOracleDeviationTimelock.HealingStarted(block.timestamp + healingDuration);
+        vm.expectEmit(false, false, false, true); // Check data (expiresAt)
+        emit IMetaOracleDeviationTimelock.HealingStarted(block.timestamp + healingDuration);
 
         // Start healing
         metaOracle.heal();
@@ -530,8 +534,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertTrue(metaOracle.isDeviant(), "Sanity Check: Should be deviant again");
 
         // Expect event
-        vm.expectEmit(true, false, false, true);
-        emit MetaOracleDeviationTimelock.HealingRevoked();
+        vm.expectEmit(false, false, false, true); // No indexed params, check event happened
+        emit IMetaOracleDeviationTimelock.HealingRevoked();
 
         // Revoke healing
         metaOracle.revokeHealing();
@@ -600,8 +604,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertFalse(metaOracle.isDeviant(), "Sanity Check: Should still be converged");
 
         // Expect event
-        vm.expectEmit(true, true, false, true); // Check indexed address (topic1)
-        emit MetaOracleDeviationTimelock.HealingAccepted(address(primaryOracle));
+        vm.expectEmit(true, false, false, true); // Check topic1 (indexed newOracle address)
+        emit IMetaOracleDeviationTimelock.HealingAccepted(address(primaryOracle));
 
         // Accept healing
         metaOracle.acceptHealing();
@@ -808,6 +812,8 @@ contract MetaOracleDeviationTimelockTest is Test {
         // 5. Timelock passes -> Accept Healing
         vm.warp(secondHealingExpiry);
         assertFalse(metaOracle.isDeviant(), "Sanity Check: Should still be converged");
+        vm.expectEmit(true, false, false, true); // Check topic1 (indexed newOracle address)
+        emit IMetaOracleDeviationTimelock.HealingAccepted(address(primaryOracle));
         metaOracle.acceptHealing();
         assertTrue(metaOracle.isPrimary());
     }
