@@ -189,8 +189,9 @@ contract MetaOracleDeviationTimelockTest is Test {
     function test_GetDeviation_SlightDeviation_BelowThreshold() public {
         // Set prices with 2% deviation (2000 vs 1960)
         primaryOracle.setPrice(2000 * PRICE_PRECISION);
-        backupOracle.setPrice(1960 * PRICE_PRECISION); // ~2.04% deviation relative to backup
-        uint256 expectedDeviation = ((2000 - 1960) * PRICE_PRECISION * PRICE_PRECISION) / (1960 * PRICE_PRECISION);
+        backupOracle.setPrice(1960 * PRICE_PRECISION); // ~2.02% deviation relative to average
+        uint256 average = ((2000 + 1960) * PRICE_PRECISION) / 2;
+        uint256 expectedDeviation = ((2000 - 1960) * PRICE_PRECISION * PRICE_PRECISION) / average;
         assertEq(metaOracle.getDeviation(), expectedDeviation, "Deviation mismatch (below threshold)");
         assertFalse(metaOracle.isDeviant(), "Should not be deviant (below threshold)");
     }
@@ -198,8 +199,9 @@ contract MetaOracleDeviationTimelockTest is Test {
     function test_GetDeviation_SignificantDeviation_AboveThreshold() public {
         // Set prices with 6% deviation (2000 vs 1880)
         primaryOracle.setPrice(2000 * PRICE_PRECISION);
-        backupOracle.setPrice(1880 * PRICE_PRECISION); // ~6.38% deviation relative to backup
-        uint256 expectedDeviation = ((2000 - 1880) * PRICE_PRECISION * PRICE_PRECISION) / (1880 * PRICE_PRECISION);
+        backupOracle.setPrice(1880 * PRICE_PRECISION); // ~6.19% deviation relative to average
+        uint256 average = ((2000 + 1880) * PRICE_PRECISION) / 2;
+        uint256 expectedDeviation = ((2000 - 1880) * PRICE_PRECISION * PRICE_PRECISION) / average;
         assertEq(metaOracle.getDeviation(), expectedDeviation, "Deviation mismatch (above threshold)");
         assertTrue(metaOracle.isDeviant(), "Should be deviant (above threshold)");
     }
@@ -207,8 +209,9 @@ contract MetaOracleDeviationTimelockTest is Test {
     function test_GetDeviation_BackupHigher_AboveThreshold() public {
         // Set prices with 6% deviation (1880 vs 2000)
         primaryOracle.setPrice(1880 * PRICE_PRECISION);
-        backupOracle.setPrice(2000 * PRICE_PRECISION); // ~6.38% abs deviation relative to backup
-        uint256 expectedDeviation = ((2000 - 1880) * PRICE_PRECISION * PRICE_PRECISION) / (2000 * PRICE_PRECISION);
+        backupOracle.setPrice(2000 * PRICE_PRECISION); // ~6.19% abs deviation relative to average
+        uint256 average = ((1880 + 2000) * PRICE_PRECISION) / 2;
+        uint256 expectedDeviation = ((2000 - 1880) * PRICE_PRECISION * PRICE_PRECISION) / average;
         assertEq(metaOracle.getDeviation(), expectedDeviation, "Deviation mismatch (backup higher, above threshold)");
         assertTrue(metaOracle.isDeviant(), "Should be deviant (backup higher, above threshold)");
     }
@@ -216,7 +219,10 @@ contract MetaOracleDeviationTimelockTest is Test {
     function test_GetDeviation_BackupIsZero_PrimaryNonZero() public {
         primaryOracle.setPrice(1 * PRICE_PRECISION);
         backupOracle.setPrice(0);
-        assertEq(metaOracle.getDeviation(), type(uint256).max, "Deviation should be max");
+        // With backup = 0 and primary = 1, average = 0.5, deviation = 1 * 1e18 / 0.5 = 2 * 1e18
+        uint256 average = ((1 * PRICE_PRECISION + 0) / 2);
+        uint256 expectedDeviation = ((1 * PRICE_PRECISION - 0) * PRICE_PRECISION) / average;
+        assertEq(metaOracle.getDeviation(), expectedDeviation, "Deviation should be calculated normally");
         assertTrue(metaOracle.isDeviant(), "Should be deviant when backup is zero");
     }
 
@@ -1045,8 +1051,9 @@ contract MetaOracleDeviationTimelockTest is Test {
     }
 
     function test_Initialize_BackupPriceHigher() public {
-        // Set initial prices with backup higher than primary
-        primaryOracle.setPrice(1900 * PRICE_PRECISION);
+        // Set initial prices with backup higher than primary but within threshold
+        // Using 1950 vs 2000: deviation = 50 * 1e18 / 1975 ≈ 0.0253 (2.53% < 5%)
+        primaryOracle.setPrice(1950 * PRICE_PRECISION);
         backupOracle.setPrice(2000 * PRICE_PRECISION);
 
         // Deploy new meta oracle
@@ -1060,7 +1067,7 @@ contract MetaOracleDeviationTimelockTest is Test {
 
         // Verify initial state
         assertEq(address(newMetaOracle.currentOracle()), address(primaryOracle), "Should start with primary");
-        assertEq(newMetaOracle.price(), 1900 * PRICE_PRECISION, "Should use primary price");
+        assertEq(newMetaOracle.price(), 1950 * PRICE_PRECISION, "Should use primary price");
         assertFalse(newMetaOracle.isDeviant(), "Should not be deviant initially");
     }
 } 
