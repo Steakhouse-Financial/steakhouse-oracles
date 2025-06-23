@@ -48,23 +48,12 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
         healingTimelockDuration = _healingTimelockDuration;
 
         // Check initial deviation
-        uint256 initialPrimaryPrice = _primaryOracle.price();
-        uint256 initialBackupPrice = _backupOracle.price();
-        uint256 initialDeviation;
-        if (initialBackupPrice == 0) {
-            initialDeviation = initialPrimaryPrice == 0 ? 0 : type(uint256).max;
-        } else {
-            uint256 diff;
-            if (initialPrimaryPrice >= initialBackupPrice) {
-                diff = initialPrimaryPrice - initialBackupPrice;
-            } else {
-                diff = initialBackupPrice - initialPrimaryPrice;
-            }
-            initialDeviation = (diff * 10**18) / initialBackupPrice;
-        }
+        uint256 initialDeviation = getDeviation();
         require(initialDeviation <= _deviationThreshold, "MODT: Initial deviation too high");
 
         currentOracle = _primaryOracle; // Start with the primary oracle
+        challengeExpiresAt = 0;
+        healingExpiresAt = 0;
     }
 
     /// @inheritdoc IOracle
@@ -111,15 +100,15 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
     }
 
     /// @notice Calculates the absolute relative deviation between primary and backup oracles.
-    /// @dev Deviation is calculated as `abs(primaryPrice - backupPrice) * 1e18 / backupPrice`.
-    /// Returns 0 if backupPrice is 0 and primaryPrice is 0.
-    /// Returns type(uint256).max if backupPrice is 0 and primaryPrice is non-zero.
+    /// @dev Deviation is calculated as `abs(primaryPrice - backupPrice) * 1e18 / average(primaryPrice, backupPrice)`.
+    /// Returns 0 if both prices are 0.
     function getDeviation() public view returns (uint256) {
         uint256 currentPrimaryPrice = primaryOracle.price();
         uint256 currentBackupPrice = backupOracle.price();
 
-        if (currentBackupPrice == 0) {
-            return currentPrimaryPrice == 0 ? 0 : type(uint256).max;
+        // Handle case where both prices are zero
+        if (currentPrimaryPrice == 0 && currentBackupPrice == 0) {
+            return 0;
         }
 
         uint256 diff;
@@ -129,8 +118,11 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
             diff = currentBackupPrice - currentPrimaryPrice;
         }
 
+        // Calculate average of the two prices
+        uint256 average = (currentPrimaryPrice + currentBackupPrice) / 2;
+        
         // Use uint256 for intermediate multiplication to avoid overflow before division
-        return (diff * 10**18) / currentBackupPrice;
+        return (diff * 10**18) / average;
     }
 
     /// @notice Checks if the deviation exceeds the configured threshold.
