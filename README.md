@@ -1,66 +1,12 @@
-## Foundry
+# Steakhouse Oracles
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This repository contains Solidity smart contracts for oracles used by Steakhouse Financial.
 
-Foundry consists of:
+## Deployments
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+This section lists the deployed contracts on various chains.
 
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+| Chain | Contract Name | Block Explorer | Source Code |
+|---|---|---|---|
+| Ethereum | `MetaOracleDeviationTimelockFactory` | [`0xFf4AC9A813D9A9cEAA69b10455DB488BcEBaabE5`](https://etherscan.io/address/0xFf4AC9A813D9A9cEAA69b10455DB488BcEBaabE5#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
+| Base | `MetaOracleDeviationTimelockFactory` | [`0x00CdD4e27E1d8d707C45e69F3b0d2635237229Ab`](https://basescan.org/address/0x00CdD4e27E1d8d707C45e69F3b0d2635237229Ab#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
