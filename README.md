@@ -8,5 +8,5 @@ This section lists the deployed contracts on various chains.
 
 | Chain | Contract Name | Block Explorer | Source Code |
 |---|---|---|---|
-| Ethereum | `MetaOracleDeviationTimelockFactory` | [`0xFf4AC9A813D9A9cEAA69b10455DB488BcEBaabE5`](https://etherscan.io/address/0xFf4AC9A813D9A9cEAA69b10455DB488BcEBaabE5#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
-| Base | `MetaOracleDeviationTimelockFactory` | [`0x00CdD4e27E1d8d707C45e69F3b0d2635237229Ab`](https://basescan.org/address/0x00CdD4e27E1d8d707C45e69F3b0d2635237229Ab#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
+| Ethereum | `MetaOracleDeviationTimelockFactory` | [`0xeC34e4e892061f368F915aDb9467B656ae5C42e8`](https://etherscan.io/address/0xeC34e4e892061f368F915aDb9467B656ae5C42e8#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
+| Base | `MetaOracleDeviationTimelockFactory` | [`0x83910ae3f4a7bb8606402289a60feb95bc39a060`](https://basescan.org/address/0x83910ae3f4a7bb8606402289a60feb95bc39a060#code) | [GitHub](https://github.com/Steakhouse-Financial/steakhouse-oracles/blob/36385342274f71999b66c79c4475234a39ba9a01/src/MetaOracleDeviationTimelockFactory.sol) |
