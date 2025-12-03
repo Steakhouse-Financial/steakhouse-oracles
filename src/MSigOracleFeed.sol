@@ -21,7 +21,7 @@ contract MSigOracleFeed is AggregatorV3Interface {
     string public description;
 
     /// @notice Maximum allowed deviation from current price (scaled by 1e18, e.g., 0.1e18 for 10%)
-    uint256 public immutable maxSafeDeviation;
+    uint256 public maxSafeDeviation;
 
     /// @notice Current price value
     int256 private _price;
@@ -38,6 +38,7 @@ contract MSigOracleFeed is AggregatorV3Interface {
     // Events
     event PriceUpdated(uint80 indexed roundId, int256 price, address indexed updatedBy);
     event PriceForceUpdated(uint80 indexed roundId, int256 price, address indexed updatedBy);
+    event MaxSafeDeviationUpdated(uint256 oldDeviation, uint256 newDeviation);
 
     // Errors
     error Unauthorized();
@@ -104,6 +105,19 @@ contract MSigOracleFeed is AggregatorV3Interface {
 
         _updatePrice(newPrice);
         emit PriceForceUpdated(_roundId, newPrice, msg.sender);
+    }
+
+    /**
+     * @notice Updates the maximum safe deviation
+     * @param newMaxSafeDeviation The new maximum deviation value (scaled by 1e18)
+     */
+    function setMaxSafeDeviation(uint256 newMaxSafeDeviation) external {
+        if (msg.sender != controller) revert Unauthorized();
+
+        uint256 oldDeviation = maxSafeDeviation;
+        maxSafeDeviation = newMaxSafeDeviation;
+
+        emit MaxSafeDeviationUpdated(oldDeviation, newMaxSafeDeviation);
     }
 
     /**
