@@ -20,6 +20,7 @@ contract MSigOracleFeedTest is Test {
 
     event PriceUpdated(uint80 indexed roundId, int256 price, address indexed updatedBy);
     event PriceForceUpdated(uint80 indexed roundId, int256 price, address indexed updatedBy);
+    event MaxSafeDeviationUpdated(uint256 oldDeviation, uint256 newDeviation);
 
     function setUp() public {
         feed = new MSigOracleFeed(
@@ -447,5 +448,49 @@ contract MSigOracleFeedTest is Test {
 
         (, int256 answer,,,) = permissiveFeed.latestRoundData();
         assertEq(answer, INITIAL_PRICE * 2);
+    }
+
+    // setMaxSafeDeviation Tests
+    function testSetMaxSafeDeviationUpdatesValueAndEmitsEvent() public {
+        uint256 newDeviation = 0.2e18;
+
+        vm.prank(controller);
+        vm.expectEmit(false, false, false, true);
+        emit MaxSafeDeviationUpdated(MAX_DEVIATION, newDeviation);
+        feed.setMaxSafeDeviation(newDeviation);
+
+        assertEq(feed.maxSafeDeviation(), newDeviation);
+    }
+
+    function testSetMaxSafeDeviationRevertsOnUnauthorized() public {
+        vm.prank(unauthorized);
+        vm.expectRevert(MSigOracleFeed.Unauthorized.selector);
+        feed.setMaxSafeDeviation(0.2e18);
+    }
+
+    function testSetMaxSafeDeviationAffectsPriceChecks() public {
+        uint256 newDeviation = 0.05e18; // 5%
+        int256 tooHigh = 1060e8; // +6%
+
+        vm.prank(controller);
+        feed.setMaxSafeDeviation(newDeviation);
+
+        vm.prank(controller);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MSigOracleFeed.DeviationTooHigh.selector,
+                INITIAL_PRICE,
+                tooHigh,
+                6e16,
+                newDeviation
+            )
+        );
+        feed.setPrice(tooHigh);
+
+        vm.prank(controller);
+        feed.setPrice(1050e8);
+
+        (, int256 answer,,,) = feed.latestRoundData();
+        assertEq(answer, 1050e8);
     }
 }

@@ -119,4 +119,37 @@ contract ERC4626FeedTest is Test {
         uint256 expectedPrice = (amount * 10**customDecimals) / 10**DECIMALS;
         assertEq(customFeed.getPrice(), expectedPrice);
     }
-} 
+
+    function testUpscaleDecimals() public {
+        // 6-decimal asset and vault, oracle output upscaled to 18 decimals
+        MockERC20 usdc = new MockERC20("USD Coin", "USDC", 6);
+        MockERC4626 usdcVault = new MockERC4626(usdc, "Vault USDC", "vUSDC");
+        ERC4626Feed upscaledFeed = new ERC4626Feed(usdcVault, 18);
+
+        assertEq(upscaledFeed.decimals(), 18);
+        assertEq(upscaledFeed.SCALING_NUMERATOR(), 1e12);
+        assertEq(upscaledFeed.SCALING_DENOMINATOR(), 1);
+
+        // 1 share = 1.05 assets (6 decimals)
+        usdcVault.setConvertToAssets(1e6, 1.05e6);
+
+        assertEq(upscaledFeed.getPrice(), 1.05e18);
+
+        (, int256 answer,,,) = upscaledFeed.latestRoundData();
+        assertEq(answer, int256(1.05e18));
+    }
+
+    function testDefaultDecimalsFollowNonStandardAsset() public {
+        // _decimals == 0 falls back to the asset's decimals, with no scaling applied
+        MockERC20 usdc = new MockERC20("USD Coin", "USDC", 6);
+        MockERC4626 usdcVault = new MockERC4626(usdc, "Vault USDC", "vUSDC");
+        ERC4626Feed defaultFeed = new ERC4626Feed(usdcVault, 0);
+
+        assertEq(defaultFeed.decimals(), 6);
+        assertEq(defaultFeed.SCALING_NUMERATOR(), 1);
+        assertEq(defaultFeed.SCALING_DENOMINATOR(), 1);
+
+        usdcVault.setConvertToAssets(1e6, 1.05e6);
+        assertEq(defaultFeed.getPrice(), 1.05e6);
+    }
+}
