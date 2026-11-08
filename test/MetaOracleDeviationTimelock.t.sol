@@ -226,6 +226,20 @@ contract MetaOracleDeviationTimelockTest is Test {
         assertTrue(metaOracle.isDeviant(), "Should be deviant when backup is zero");
     }
 
+    function test_GetDeviation_OneWeiVsZero() public {
+        // (1 + 0) / 2 truncates to 0, which must not cause a division by zero.
+        // Same result as any other zero / non-zero pair: abs diff / average = 2.
+        primaryOracle.setPrice(1);
+        backupOracle.setPrice(0);
+        assertEq(metaOracle.getDeviation(), 2 * 1e18, "Deviation should be 2e18 for (1, 0)");
+        assertTrue(metaOracle.isDeviant(), "Should be deviant for (1, 0)");
+
+        primaryOracle.setPrice(0);
+        backupOracle.setPrice(1);
+        assertEq(metaOracle.getDeviation(), 2 * 1e18, "Deviation should be 2e18 for (0, 1)");
+        assertTrue(metaOracle.isDeviant(), "Should be deviant for (0, 1)");
+    }
+
     function test_GetDeviation_BackupIsZero_PrimaryIsZero() public {
         primaryOracle.setPrice(0);
         backupOracle.setPrice(0);
