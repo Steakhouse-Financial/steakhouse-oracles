@@ -120,7 +120,14 @@ contract MetaOracleDeviationTimelock is IMetaOracleDeviationTimelock, Initializa
 
         // Calculate average of the two prices
         uint256 average = (currentPrimaryPrice + currentBackupPrice) / 2;
-        
+
+        // The prices are {0, 1}, so the integer average truncates to 0. This is the same
+        // zero / non-zero case as any other (abs diff / average = 2), so return it directly
+        // instead of dividing by zero.
+        if (average == 0) {
+            return 2 * 10**18;
+        }
+
         // Use uint256 for intermediate multiplication to avoid overflow before division
         return (diff * 10**18) / average;
     }
